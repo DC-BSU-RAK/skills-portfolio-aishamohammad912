@@ -1,0 +1,296 @@
+
+# This program is a simple Maths Quiz I made using Tkinter.
+# It shows a menu, lets the user choose difficulty, and then gives 10 questions.
+# The user gets 10 points for first try and 5 for second try.
+
+import tkinter as tk
+from tkinter import messagebox
+import random
+
+# -----------------  the global constants -----------------
+TOTAL_QUESTIONS = 10
+POINTS_FIRST_TRY = 10
+POINTS_SECOND_TRY = 5
+
+# ----------------- global variables used  -----------------
+difficulty = None          # 1 = Easy, 2 = Moderate, 3 = Advanced
+score = 0
+question_number = 0        # the questions goes from 0 to TOTAL_QUESTIONS - 1
+first_try = True
+num1 = 0
+num2 = 0
+operation = "+"            # "+" or "-"
+
+
+# ----------------- functions from the the specification -----------------
+
+def displayMenu():
+    """Show the difficulty level menu at the beginning of the quiz."""
+    quiz_frame.pack_forget()
+    result_frame.pack_forget()
+    menu_frame.pack(padx=20, pady=20)
+
+
+def randomInt(level):
+    """
+    Chooses a random integer based on the difficulty level.
+    Easy    -> single digit (0–9)
+    Moderate-> double digit (10–99)
+    Advanced-> four digits (1000–9999)
+    """
+    if level == 1:          # Easy
+        min_val, max_val = 0, 9
+    elif level == 2:        # Moderate
+        min_val, max_val = 10, 99
+    else:                   # Advanced
+        min_val, max_val = 1000, 9999
+
+    return random.randint(min_val, max_val)
+
+
+def decideOperation():
+    """Randomly decide whether the problem is addition or subtraction."""
+    return random.choice(["+", "-"])
+
+
+def start_quiz(level):
+    """Called when the user selects a difficulty level from the menu."""
+    global difficulty, score, question_number
+    difficulty = level
+    score = 0
+    question_number = 0
+
+    menu_frame.pack_forget()
+    next_question()
+
+
+def next_question():
+    """Generate and prepare the next arithmetic problem."""
+    global num1, num2, operation, first_try, question_number
+
+    if question_number >= TOTAL_QUESTIONS:
+        displayResults()
+        return
+
+    first_try = True
+
+    # Generate numbers based on difficulty
+    num1 = randomInt(difficulty)
+    num2 = randomInt(difficulty)
+    operation = decideOperation()
+
+    # I made advanced questions a bit trickier:
+    # For advanced, allow negative answers sometimes.
+    # For easy/moderate,i kept answers non-negative for clarity.
+    if difficulty in (1, 2) and operation == "-" and num1 < num2:
+        num1, num2 = num2, num1
+
+    displayProblem()
+
+
+def displayProblem():
+    """Display the current question and reset the answer field."""
+    quiz_frame.pack(padx=20, pady=20)
+    result_frame.pack_forget()
+
+    question_text = f"Question {question_number + 1} of {TOTAL_QUESTIONS}\n"
+    question_text += f"{num1} {operation} {num2} ="
+
+    question_label.config(text=question_text)
+    feedback_label.config(text="")
+    answer_entry.delete(0, tk.END)
+    answer_entry.focus()
+    score_label.config(text=f"Score: {score}")
+
+
+def isCorrect(user_answer, correct_answer, first_time):
+    """
+    Check whether the user's answer is correct.
+    Returns (is_correct, points_awarded).
+    """
+    if user_answer == correct_answer:
+        if first_time:
+            points = POINTS_FIRST_TRY
+            feedback_label.config(text="Correct! You earned 10 points.")
+        else:
+            points = POINTS_SECOND_TRY
+            feedback_label.config(text="Correct on the second attempt. 5 points.")
+        return True, points
+    else:
+        if first_time:
+            feedback_label.config(text="That answer is not correct. Try once more.")
+        else:
+            feedback_label.config(
+                text=f"Incorrect again. The correct answer was {correct_answer}."
+            )
+        return False, 0
+
+
+def submit_answer():
+    """Handle the logic for when the user submits an answer."""
+    global first_try, score, question_number
+
+    user_text = answer_entry.get().strip()
+    if user_text == "":
+        messagebox.showinfo("No Answer", "Please enter an answer before submitting.")
+        return
+
+    try:
+        user_answer = int(user_text)
+    except ValueError:
+        messagebox.showerror("Invalid Input", "Please enter a whole number.")
+        return
+
+    # Calculate the correct answer for the current problem
+    if operation == "+":
+        correct_answer = num1 + num2
+    else:
+        correct_answer = num1 - num2
+
+    correct, points = isCorrect(user_answer, correct_answer, first_try)
+
+    if correct:
+        score += points
+        question_number += 1
+        score_label.config(text=f"Score: {score}")
+        next_question()
+    else:
+        if first_try:
+            # Give the user one more attempt on the same question
+            first_try = False
+            answer_entry.delete(0, tk.END)
+        else:
+            # Move on to the next question without adding points
+            question_number += 1
+            score_label.config(text=f"Score: {score}")
+            next_question()
+
+
+def displayResults():
+    """Show the final score and a grade based on the score."""
+    quiz_frame.pack_forget()
+    result_frame.pack(padx=20, pady=20)
+
+    result_label.config(text=f"You scored {score} out of {TOTAL_QUESTIONS * POINTS_FIRST_TRY}.")
+
+    # Simple grading system
+    percentage = (score / (TOTAL_QUESTIONS * POINTS_FIRST_TRY)) * 100
+
+    if percentage >= 90:
+        grade = "A+"
+    elif percentage >= 80:
+        grade = "A"
+    elif percentage >= 70:
+        grade = "B"
+    elif percentage >= 60:
+        grade = "C"
+    elif percentage >= 50:
+        grade = "D"
+    else:
+        grade = "F"
+
+    grade_label.config(text=f"Your grade: {grade}")
+
+
+def play_again():
+    """Allow the user to take the quiz again by returning to the menu."""
+    displayMenu()
+
+
+def quit_game():
+    """Close the application."""
+    root.destroy()
+
+
+# ----------------- GUI setup -----------------
+root = tk.Tk()
+root.title("Maths Quiz")
+root.resizable(False, False)
+
+# Menu frame (difficulty selection)
+menu_frame = tk.Frame(root)
+
+menu_title = tk.Label(
+    menu_frame,
+    text="Select Difficulty Level",
+    font=("Arial", 16, "bold")
+)
+menu_title.pack(pady=10)
+
+menu_info = tk.Label(
+    menu_frame,
+    text="Easy: single digits   |   Moderate: double digits   |   Advanced: four digits",
+    font=("Arial", 10)
+)
+menu_info.pack(pady=5)
+
+easy_btn = tk.Button(
+    menu_frame,
+    text="1. Easy",
+    width=20,
+    command=lambda: start_quiz(1)
+)
+easy_btn.pack(pady=5)
+
+medium_btn = tk.Button(
+    menu_frame,
+    text="2. Moderate",
+    width=20,
+    command=lambda: start_quiz(2)
+)
+medium_btn.pack(pady=5)
+
+hard_btn = tk.Button(
+    menu_frame,
+    text="3. Advanced",
+    width=20,
+    command=lambda: start_quiz(3)
+)
+hard_btn.pack(pady=5)
+
+quit_from_menu_btn = tk.Button(menu_frame, text="Quit", width=20, command=quit_game)
+quit_from_menu_btn.pack(pady=10)
+
+# Quiz frame (questions and answer area)
+quiz_frame = tk.Frame(root)
+
+question_label = tk.Label(quiz_frame, text="", font=("Arial", 14))
+question_label.pack(pady=10)
+
+answer_entry = tk.Entry(quiz_frame, font=("Arial", 12), justify="center")
+answer_entry.pack(pady=5)
+
+button_row = tk.Frame(quiz_frame)
+button_row.pack(pady=5)
+
+submit_btn = tk.Button(button_row, text="Submit Answer", width=15, command=submit_answer)
+submit_btn.grid(row=0, column=0, padx=5)
+
+quit_quiz_btn = tk.Button(button_row, text="Quit", width=10, command=quit_game)
+quit_quiz_btn.grid(row=0, column=1, padx=5)
+
+feedback_label = tk.Label(quiz_frame, text="", font=("Arial", 12))
+feedback_label.pack(pady=10)
+
+score_label = tk.Label(quiz_frame, text="Score: 0", font=("Arial", 12, "bold"))
+score_label.pack(pady=5)
+
+# Results frame (final score and grade)
+result_frame = tk.Frame(root)
+
+result_label = tk.Label(result_frame, text="", font=("Arial", 14))
+result_label.pack(pady=10)
+
+grade_label = tk.Label(result_frame, text="", font=("Arial", 14, "bold"))
+grade_label.pack(pady=5)
+
+play_again_btn = tk.Button(result_frame, text="Play Again", width=15, command=play_again)
+play_again_btn.pack(pady=5)
+
+quit_btn = tk.Button(result_frame, text="Quit", width=15, command=quit_game)
+quit_btn.pack(pady=5)
+
+# Starting  with the menu
+displayMenu()
+
+root.mainloop()
