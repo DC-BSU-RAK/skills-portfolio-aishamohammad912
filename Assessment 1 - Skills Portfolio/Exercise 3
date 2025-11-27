@@ -1,0 +1,541 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog
+import os
+
+
+class StudentManagerApp:
+    def __init__(self, master, filename="studentMarks.txt"):
+        self.master = master
+        self.master.title("Student Manager")
+        self.master.geometry("900x500")
+        self.filename = filename
+
+        # padding and background
+        self.master.configure(bg="#f5f5f7")
+
+        # Data structure: list of dicts
+        self.students = []
+        self.load_students()
+
+        # ----- UI SETUP -----
+        self.create_style()
+        self.create_menu()
+        self.create_header()
+        self.create_toolbar()
+        self.create_table()
+        self.create_statusbar()
+
+        # Default view
+        self.view_all_students()
+
+    # ---------- DATA LAYER ----------
+
+    def load_students(self):
+        """Load students from the text file, handling optional first count line."""
+        self.students = []
+        if not os.path.exists(self.filename):
+            messagebox.showwarning(
+                "File not found",
+                f"{self.filename} not found. Starting with an empty list."
+            )
+            return
+
+        try:
+            with open(self.filename, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f if line.strip()]
+        except OSError as e:
+            messagebox.showerror("Error", f"Could not read file:\n{e}")
+            return
+
+        if not lines:
+            return
+
+        # it Detects if first line is a count
+        start_index = 0
+        try:
+            int(lines[0])
+            start_index = 1
+        except ValueError:
+            start_index = 0
+
+        for line in lines[start_index:]:
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) != 6:
+                continue  # skiping malformed lines
+
+            student_id, name, cw1, cw2, cw3, exam = parts
+            try:
+                cw1 = int(cw1)
+                cw2 = int(cw2)
+                cw3 = int(cw3)
+                exam = int(exam)
+            except ValueError:
+                continue
+
+            self.students.append({
+                "id": student_id,
+                "name": name,
+                "cw1": cw1,
+                "cw2": cw2,
+                "cw3": cw3,
+                "exam": exam,
+            })
+
+    def save_students(self):
+        """Save students back to the file, including count line."""
+        try:
+            with open(self.filename, "w", encoding="utf-8") as f:
+                f.write(str(len(self.students)) + "\n")
+                for s in self.students:
+                    line = ",".join([
+                        s["id"],
+                        s["name"],
+                        str(s["cw1"]),
+                        str(s["cw2"]),
+                        str(s["cw3"]),
+                        str(s["exam"]),
+                    ])
+                    f.write(line + "\n")
+        except OSError as e:
+            messagebox.showerror("Error", f"Could not save file:\n{e}")
+
+    # ---------- CALCULATIONS ----------
+
+    @staticmethod
+    def compute_totals(student):
+        cw_total = student["cw1"] + student["cw2"] + student["cw3"]  # out of 60
+        overall_total = cw_total + student["exam"]                   # out of 160
+        percent = (overall_total / 160) * 100
+        grade = StudentManagerApp.get_grade(percent)
+        return cw_total, overall_total, percent, grade
+
+    @staticmethod
+    def get_grade(percent):
+        if percent >= 70:
+            return "A"
+        elif percent >= 60:
+            return "B"
+        elif percent >= 50:
+            return "C"
+        elif percent >= 40:
+            return "D"
+        else:
+            return "F"
+
+    # ---------- UI CREATION ----------
+
+    def create_style(self):
+        style = ttk.Style()
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"), background="#f5f5f7")
+        style.configure("Subtitle.TLabel", font=("Segoe UI", 10), background="#f5f5f7", foreground="#555")
+        style.configure("Toolbar.TButton", font=("Segoe UI", 10), padding=5)
+        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
+        style.configure("Treeview", rowheight=24, font=("Segoe UI", 10))
+
+    def create_header(self):
+        header = ttk.Frame(self.master, padding=(15, 10))
+        header.pack(side=tk.TOP, fill=tk.X)
+
+        title = ttk.Label(header, text="Student Manager", style="Title.TLabel")
+        title.pack(anchor="w")
+
+        subtitle = ttk.Label(
+            header,
+            text="View, search and manage student marks and grades",
+            style="Subtitle.TLabel"
+        )
+        subtitle.pack(anchor="w", pady=(2, 0))
+
+    def create_toolbar(self):
+        toolbar = ttk.Frame(self.master, padding=(10, 5))
+        toolbar.pack(side=tk.TOP, fill=tk.X)
+
+        ttk.Button(toolbar, text="View All", style="Toolbar.TButton",
+                   command=self.view_all_students).pack(side=tk.LEFT, padx=3)
+        ttk.Button(toolbar, text="Find Student", style="Toolbar.TButton",
+                   command=self.view_individual_student).pack(side=tk.LEFT, padx=3)
+        ttk.Button(toolbar, text="Highest Mark", style="Toolbar.TButton",
+                   command=self.show_highest).pack(side=tk.LEFT, padx=3)
+        ttk.Button(toolbar, text="Lowest Mark", style="Toolbar.TButton",
+                   command=self.show_lowest).pack(side=tk.LEFT, padx=3)
+        ttk.Separator(toolbar, orient="vertical").pack(side=tk.LEFT, fill=tk.Y, padx=8)
+        ttk.Button(toolbar, text="Add", style="Toolbar.TButton",
+                   command=self.add_student_dialog).pack(side=tk.LEFT, padx=3)
+        ttk.Button(toolbar, text="Update", style="Toolbar.TButton",
+                   command=self.update_student_dialog).pack(side=tk.LEFT, padx=3)
+        ttk.Button(toolbar, text="Delete", style="Toolbar.TButton",
+                   command=self.delete_student_by_id).pack(side=tk.LEFT, padx=3)
+
+    def create_table(self):
+        container = ttk.Frame(self.master, padding=(10, 5))
+        container.pack(fill=tk.BOTH, expand=True)
+
+        columns = ("id", "name", "cw_total", "exam", "percent", "grade")
+        self.tree = ttk.Treeview(container, columns=columns, show="headings", selectmode="browse")
+
+        self.tree.heading("id", text="Student No.")
+        self.tree.heading("name", text="Name")
+        self.tree.heading("cw_total", text="Coursework (60)")
+        self.tree.heading("exam", text="Exam (100)")
+        self.tree.heading("percent", text="Overall %")
+        self.tree.heading("grade", text="Grade")
+
+        self.tree.column("id", width=100, anchor="center")
+        self.tree.column("name", width=220, anchor="w")
+        self.tree.column("cw_total", width=130, anchor="center")
+        self.tree.column("exam", width=110, anchor="center")
+        self.tree.column("percent", width=100, anchor="center")
+        self.tree.column("grade", width=80, anchor="center")
+
+        vsb = ttk.Scrollbar(container, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vsb.set)
+
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        container.rowconfigure(0, weight=1)
+        container.columnconfigure(0, weight=1)
+
+    def create_statusbar(self):
+        bar = ttk.Frame(self.master, padding=(10, 5))
+        bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self.status_var = tk.StringVar(value="Ready")
+        self.status_label = ttk.Label(bar, textvariable=self.status_var, style="Subtitle.TLabel")
+        self.status_label.pack(side=tk.LEFT)
+
+    def create_menu(self):
+        menubar = tk.Menu(self.master)
+        self.master.config(menu=menubar)
+
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Reload from file", command=self.reload_file)
+        file_menu.add_command(label="Save to file", command=self.save_students)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.master.destroy)
+        menubar.add_cascade(label="File", menu=file_menu)
+
+        view_menu = tk.Menu(menubar, tearoff=0)
+        view_menu.add_command(label="View all student records", command=self.view_all_students)
+        view_menu.add_command(label="View individual student", command=self.view_individual_student)
+        view_menu.add_separator()
+        view_menu.add_command(label="Show highest total score", command=self.show_highest)
+        view_menu.add_command(label="Show lowest total score", command=self.show_lowest)
+        menubar.add_cascade(label="View", menu=view_menu)
+
+        manage_menu = tk.Menu(menubar, tearoff=0)
+        manage_menu.add_command(
+            label="Sort by overall % (ascending)",
+            command=lambda: self.sort_by_percent(True)
+        )
+        manage_menu.add_command(
+            label="Sort by overall % (descending)",
+            command=lambda: self.sort_by_percent(False)
+        )
+        manage_menu.add_separator()
+        manage_menu.add_command(label="Add student record", command=self.add_student_dialog)
+        manage_menu.add_command(label="Delete student record", command=self.delete_student_by_id)
+        manage_menu.add_command(label="Update student record", command=self.update_student_dialog)
+        menubar.add_cascade(label="Manage", menu=manage_menu)
+
+    # ---------- CORE FEATURES in code  ----------
+
+    def reload_file(self):
+        self.load_students()
+        self.view_all_students()
+        self.status_var.set("Reloaded data from file")
+
+    def clear_table(self):
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+
+    def populate_table(self, students_to_show):
+        self.clear_table()
+        for s in students_to_show:
+            cw_total, overall, percent, grade = self.compute_totals(s)
+            self.tree.insert("", "end", values=(
+                s["id"],
+                s["name"],
+                f"{cw_total}",
+                f"{s['exam']}",
+                f"{percent:.1f}",
+                grade
+            ))
+
+    def view_all_students(self):
+        if not self.students:
+            self.clear_table()
+            self.status_var.set("No student records loaded")
+            return
+
+        self.populate_table(self.students)
+
+        # Summary: number of students and average percentage
+        percents = [self.compute_totals(s)[2] for s in self.students]
+        avg = sum(percents) / len(percents) if percents else 0
+        self.status_var.set(f"Students: {len(self.students)}  |  Class average: {avg:.1f}%")
+
+    def find_students(self, query):
+        """Return list of students matching by id or part of name (case-insensitive)."""
+        query = query.strip().lower()
+        if not query:
+            return []
+
+        results = []
+        for s in self.students:
+            if s["id"].lower() == query or query in s["name"].lower():
+                results.append(s)
+        return results
+
+    def view_individual_student(self):
+        query = simpledialog.askstring("Find student", "Enter student number or part of name:")
+        if query is None:
+            return
+
+        matches = self.find_students(query)
+        if not matches:
+            messagebox.showinfo("Not found", "No matching student found.")
+            return
+
+        # If multiple matches, show them in the table and highlight first
+        self.populate_table(matches)
+        first_id = self.tree.get_children()[0]
+        self.tree.selection_set(first_id)
+        self.tree.focus(first_id)
+
+        if len(matches) == 1:
+            s = matches[0]
+            cw_total, overall, percent, grade = self.compute_totals(s)
+            info = (
+                f"Name: {s['name']}\n"
+                f"Student Number: {s['id']}\n"
+                f"Coursework total: {cw_total} / 60\n"
+                f"Exam mark: {s['exam']} / 100\n"
+                f"Overall percentage: {percent:.1f}%\n"
+                f"Grade: {grade}"
+            )
+            messagebox.showinfo("Student record", info)
+        else:
+            self.status_var.set(f"Found {len(matches)} matching students")
+
+    def get_extreme_student(self, highest=True):
+        if not self.students:
+            return None
+        key_func = lambda s: self.compute_totals(s)[2]  # use percentage
+        return max(self.students, key=key_func) if highest else min(self.students, key=key_func)
+
+    def show_highest(self):
+        s = self.get_extreme_student(highest=True)
+        if not s:
+            messagebox.showinfo("No data", "No student records available.")
+            return
+        self.populate_table([s])
+        cw_total, overall, percent, grade = self.compute_totals(s)
+        info = (
+            f"Top student:\n\n"
+            f"Name: {s['name']}\n"
+            f"Student Number: {s['id']}\n"
+            f"Coursework total: {cw_total} / 60\n"
+            f"Exam mark: {s['exam']} / 100\n"
+            f"Overall percentage: {percent:.1f}%\n"
+            f"Grade: {grade}"
+        )
+        messagebox.showinfo("Highest overall mark", info)
+        self.status_var.set("Showing student with highest overall mark")
+
+    def show_lowest(self):
+        s = self.get_extreme_student(highest=False)
+        if not s:
+            messagebox.showinfo("No data", "No student records available.")
+            return
+        self.populate_table([s])
+        cw_total, overall, percent, grade = self.compute_totals(s)
+        info = (
+            f"Lowest student:\n\n"
+            f"Name: {s['name']}\n"
+            f"Student Number: {s['id']}\n"
+            f"Coursework total: {cw_total} / 60\n"
+            f"Exam mark: {s['exam']} / 100\n"
+            f"Overall percentage: {percent:.1f}%\n"
+            f"Grade: {grade}"
+        )
+        messagebox.showinfo("Lowest overall mark", info)
+        self.status_var.set("Showing student with lowest overall mark")
+
+    # ---------- EXTENSION FEATURES ----------
+
+    def sort_by_percent(self, ascending=True):
+        self.students.sort(key=lambda s: self.compute_totals(s)[2], reverse=not ascending)
+        self.view_all_students()
+        direction = "ascending" if ascending else "descending"
+        self.status_var.set(f"Sorted by overall percentage ({direction})")
+
+    def add_student_dialog(self):
+        dialog = StudentEditDialog(self.master, title="Add Student")
+        self.master.wait_window(dialog.top)
+
+        if dialog.result:
+            new_student = dialog.result
+            # Ensure ID is unique
+            if any(s["id"] == new_student["id"] for s in self.students):
+                messagebox.showerror("Error", "A student with that ID already exists.")
+                return
+            self.students.append(new_student)
+            self.save_students()
+            self.view_all_students()
+            self.status_var.set(f"Added student {new_student['name']}")
+
+    def delete_student_by_id(self):
+        query = simpledialog.askstring("Delete student", "Enter student number to delete:")
+        if query is None:
+            return
+
+        student = next((s for s in self.students if s["id"] == query.strip()), None)
+        if not student:
+            messagebox.showinfo("Not found", "No student with that ID.")
+            return
+
+        confirm = messagebox.askyesno(
+            "Confirm delete",
+            f"Delete {student['name']} ({student['id']})?"
+        )
+        if not confirm:
+            return
+
+        self.students.remove(student)
+        self.save_students()
+        self.view_all_students()
+        self.status_var.set(f"Deleted student {student['name']}")
+
+    def update_student_dialog(self):
+        query = simpledialog.askstring("Update student", "Enter student number to update:")
+        if query is None:
+            return
+
+        student = next((s for s in self.students if s["id"] == query.strip()), None)
+        if not student:
+            messagebox.showinfo("Not found", "No student with that ID.")
+            return
+
+        dialog = StudentEditDialog(self.master, title="Update Student", student=student)
+        self.master.wait_window(dialog.top)
+
+        if dialog.result:
+            updated = dialog.result
+            student.update(updated)   # replace fields
+            self.save_students()
+            self.view_all_students()
+            self.status_var.set(f"Updated student {student['name']}")
+
+
+class StudentEditDialog:
+    """Small pop-up window to add or edit a student."""
+
+    def __init__(self, parent, title="Edit Student", student=None):
+        self.result = None
+        self.top = tk.Toplevel(parent)
+        self.top.title(title)
+        self.top.transient(parent)
+        self.top.grab_set()
+        self.top.resizable(False, False)
+
+        frame = ttk.Frame(self.top, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        # Fields
+        ttk.Label(frame, text="Student ID (1000-9999):").grid(row=0, column=0, sticky="w", pady=3)
+        self.id_entry = ttk.Entry(frame, width=20)
+        self.id_entry.grid(row=0, column=1, pady=3, sticky="w")
+
+        ttk.Label(frame, text="Name:").grid(row=1, column=0, sticky="w", pady=3)
+        self.name_entry = ttk.Entry(frame, width=30)
+        self.name_entry.grid(row=1, column=1, pady=3, sticky="w")
+
+        ttk.Label(frame, text="Coursework mark 1 (0-20):").grid(row=2, column=0, sticky="w", pady=3)
+        self.cw1_entry = ttk.Entry(frame, width=10)
+        self.cw1_entry.grid(row=2, column=1, pady=3, sticky="w")
+
+        ttk.Label(frame, text="Coursework mark 2 (0-20):").grid(row=3, column=0, sticky="w", pady=3)
+        self.cw2_entry = ttk.Entry(frame, width=10)
+        self.cw2_entry.grid(row=3, column=1, pady=3, sticky="w")
+
+        ttk.Label(frame, text="Coursework mark 3 (0-20):").grid(row=4, column=0, sticky="w", pady=3)
+        self.cw3_entry = ttk.Entry(frame, width=10)
+        self.cw3_entry.grid(row=4, column=1, pady=3, sticky="w")
+
+        ttk.Label(frame, text="Exam mark (0-100):").grid(row=5, column=0, sticky="w", pady=3)
+        self.exam_entry = ttk.Entry(frame, width=10)
+        self.exam_entry.grid(row=5, column=1, pady=3, sticky="w")
+
+        # Buttons
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=6, column=0, columnspan=2, pady=(10, 0))
+
+        ttk.Button(button_frame, text="Cancel", command=self.top.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="Save", command=self.on_save).pack(side=tk.RIGHT, padx=5)
+
+        # Pre-fill if editing
+        if student:
+            self.id_entry.insert(0, student["id"])
+            self.id_entry.config(state="disabled")  # ID should not change
+            self.name_entry.insert(0, student["name"])
+            self.cw1_entry.insert(0, str(student["cw1"]))
+            self.cw2_entry.insert(0, str(student["cw2"]))
+            self.cw3_entry.insert(0, str(student["cw3"]))
+            self.exam_entry.insert(0, str(student["exam"]))
+
+        # Center the dialog on parent
+        self.top.update_idletasks()
+        w = self.top.winfo_width()
+        h = self.top.winfo_height()
+        x = parent.winfo_rootx() + (parent.winfo_width() - w) // 2
+        y = parent.winfo_rooty() + (parent.winfo_height() - h) // 2
+        self.top.geometry(f"+{x}+{y}")
+
+    def on_save(self):
+        try:
+            student_id = self.id_entry.get().strip()
+            if not student_id.isdigit() or not (1000 <= int(student_id) <= 9999):
+                raise ValueError("Student ID must be a number between 1000 and 9999.")
+
+            name = self.name_entry.get().strip()
+            if not name:
+                raise ValueError("Name cannot be empty.")
+
+            cw1 = int(self.cw1_entry.get().strip())
+            cw2 = int(self.cw2_entry.get().strip())
+            cw3 = int(self.cw3_entry.get().strip())
+            exam = int(self.exam_entry.get().strip())
+
+            for mark, label, max_val in [
+                (cw1, "Coursework 1", 20),
+                (cw2, "Coursework 2", 20),
+                (cw3, "Coursework 3", 20),
+                (exam, "Exam", 100),
+            ]:
+                if not (0 <= mark <= max_val):
+                    raise ValueError(f"{label} must be between 0 and {max_val}.")
+
+        except ValueError as e:
+            messagebox.showerror("Invalid input", str(e))
+            return
+
+        self.result = {
+            "id": student_id,
+            "name": name,
+            "cw1": cw1,
+            "cw2": cw2,
+            "cw3": cw3,
+            "exam": exam,
+        }
+        self.top.destroy()
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = StudentManagerApp(root, filename="studentMarks.txt")
+    root.mainloop()

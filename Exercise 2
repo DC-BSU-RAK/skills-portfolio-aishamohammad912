@@ -1,0 +1,117 @@
+import tkinter as tk
+import random
+
+
+class JokeApp:
+    def __init__(self, master):
+        self.master = master
+        master.title("Alexa Joke Assistant")
+
+        # it will Load jokes from file when the app starts
+        self.jokes = self.load_jokes("randomJokes.txt")   # Making sure file is next to this script
+        self.current_punchline = ""
+
+        # Setup label (joke question)
+        self.setup_label = tk.Label(
+            master,
+            text="Click the button to hear a joke!",
+            wraplength=400,
+            justify="left",
+            font=("Arial", 12)
+        )
+        self.setup_label.pack(padx=10, pady=(15, 5))
+
+        # Punchline label
+        self.punchline_label = tk.Label(
+            master,
+            text="",
+            wraplength=400,
+            justify="left",
+            font=("Arial", 11, "italic"),
+            fg="gray"
+        )
+        self.punchline_label.pack(padx=10, pady=(0, 15))
+
+        # Buttons frame
+        button_frame = tk.Frame(master)
+        button_frame.pack(pady=10)
+
+        # "Alexa tell me a Joke" button
+        self.joke_button = tk.Button(
+            button_frame,
+            text="Alexa tell me a Joke",
+            command=self.show_new_joke
+        )
+        self.joke_button.grid(row=0, column=0, padx=5, pady=5)
+
+        # "Show Punchline" button
+        self.punchline_button = tk.Button(
+            button_frame,
+            text="Show Punchline",
+            command=self.show_punchline
+        )
+        self.punchline_button.grid(row=0, column=1, padx=5, pady=5)
+
+        # "Next Joke" button
+        self.next_button = tk.Button(
+            button_frame,
+            text="Next Joke",
+            command=self.show_new_joke
+        )
+        self.next_button.grid(row=0, column=2, padx=5, pady=5)
+
+        # "Quit" button
+        self.quit_button = tk.Button(
+            button_frame,
+            text="Quit",
+            command=master.destroy
+        )
+        self.quit_button.grid(row=0, column=3, padx=5, pady=5)
+
+    def load_jokes(self, filename):
+        """
+        Reads jokes from the text file.
+        Each line format: Setup?Punchline
+        Returns a list of (setup, punchline) tuples.
+        """
+        jokes = []
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    parts = line.split("?", 1)
+                    if len(parts) == 2:
+                        setup = parts[0].strip() + "?"
+                        punchline = parts[1].strip()
+                        jokes.append((setup, punchline))
+        except FileNotFoundError:
+            jokes.append(("Error: randomJokes.txt not found!", "Make sure the file is next to the Python script."))
+
+        return jokes
+
+    def show_new_joke(self):
+        """Pick a random joke and show the setup."""
+        if not self.jokes:
+            self.setup_label.config(text="No jokes available.")
+            self.punchline_label.config(text="")
+            return
+
+        setup, punchline = random.choice(self.jokes)
+        self.current_punchline = punchline
+        self.setup_label.config(text=setup)
+        self.punchline_label.config(text="")  # Clears the old punchline
+
+    def show_punchline(self):
+        """Show the punchline for the current joke."""
+        if self.current_punchline:
+            self.punchline_label.config(text=self.current_punchline)
+
+
+# Run the app
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = JokeApp(root)
+    root.mainloop()
